@@ -1,0 +1,6 @@
+# node
+node_modules
+.env
+
+# 如果不想把 JSON 放進 repo，就加這行
+data/book_of_answers_384_full.json
