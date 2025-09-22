@@ -51,6 +51,7 @@
       box-shadow:0 2px 4px rgba(0,0,0,0.2);
     }
     button:hover { background:#5a4220; }
+    /* Spinner */
     .loading { margin-top:2rem; display:none; }
     .spinner {
       margin:0 auto 1rem auto;
@@ -89,10 +90,12 @@
   <p id="remaining" class="info" style="display:none;"></p>
   <p id="notice" class="notice" style="display:none;"></p>
 
+  <!-- 操作按鈕 -->
   <button id="saveBtn" onclick="saveResult()" style="display:none;">📜 收藏此解答</button>
   <button id="shareBtn" onclick="shareResult()" style="display:none;">📤 分享</button>
   <button id="resetBtn" onclick="resetRecord()" style="display:none;">🔄 測試用：重置抽籤紀錄</button>
 
+  <!-- html2canvas -->
   <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
   <script>
     function checkToken(uid, tsHex) {
@@ -107,7 +110,7 @@
         userData.lastTS = tsVal; userData.count = 1;
         record.data[uid] = userData;
         localStorage.setItem("tokenRecord", JSON.stringify(record));
-        return { ok: true, userData };
+        return { ok: true, first: true, userData };
       }
       if (tsVal <= userData.lastTS) return { ok: false, error: "⚠️ Token 無效或重複使用，請重新感應。" };
       if (userData.count >= 3) return { ok: false, error: "⚠️ 今日抽籤次數已達上限（3次）。" };
@@ -115,7 +118,7 @@
       userData.lastTS = tsVal; userData.count += 1;
       record.data[uid] = userData;
       localStorage.setItem("tokenRecord", JSON.stringify(record));
-      return { ok: true, userData };
+      return { ok: true, first: false, userData };
     }
 
     function typeWriter(text, element, speed = 40, callback) {
@@ -133,11 +136,10 @@
         const res = await fetch(`/api/getAnswer?uid=${uid}&ts=${tsHex}`);
         const data = await res.json();
 
-        if (!res.ok || !data.success) {
-          throw new Error(data.error || "API 回傳錯誤");
-        }
+        if (!res.ok || data.error) throw new Error(data.error || "API 錯誤");
 
-        const pick = data.answer;
+        const zh = data.answer_tw;
+        const en = data.answer_en;
 
         document.getElementById("loading").style.display = "block";
         document.getElementById("output").style.display = "none";
@@ -148,8 +150,8 @@
           document.getElementById("hint").style.display = "none";
           document.getElementById("output").style.display = "block";
 
-          typeWriter(pick.answer_tw, document.getElementById("ansZh"), 50, () => {
-            typeWriter(pick.answer_en, document.getElementById("ansEn"), 40);
+          typeWriter(zh, document.getElementById("ansZh"), 50, () => {
+            typeWriter(en, document.getElementById("ansEn"), 40);
           });
 
           document.getElementById("remaining").style.display = "block";
@@ -161,7 +163,8 @@
 
       } catch (err) {
         console.error(err);
-        alert("⚠️ 抽取答案失敗，請稍後再試！");
+        document.getElementById("notice").innerText = "⚠️ 抽取答案失敗，請稍後再試！";
+        document.getElementById("notice").style.display = "block";
       }
     }
 
@@ -193,9 +196,8 @@
       dateEl.style.fontWeight = "bold";
       wrapper.appendChild(dateEl);
 
-      const zh = document.getElementById("ansZh").innerText;
       const zhEl = document.createElement("p");
-      zhEl.innerText = zh;
+      zhEl.innerText = document.getElementById("ansZh").innerText;
       zhEl.style.fontSize = "1.5rem";
       zhEl.style.margin = "1rem 0";
       wrapper.appendChild(zhEl);
@@ -206,9 +208,8 @@
       divider.style.margin = "0.5rem auto";
       wrapper.appendChild(divider);
 
-      const en = document.getElementById("ansEn").innerText;
       const enEl = document.createElement("p");
-      enEl.innerText = en;
+      enEl.innerText = document.getElementById("ansEn").innerText;
       enEl.style.fontSize = "1.2rem";
       enEl.style.color = "#333";
       enEl.style.margin = "1rem 0";
@@ -238,20 +239,14 @@
     window.addEventListener("load", () => {
       const urlParams = new URLSearchParams(window.location.search);
       const token = urlParams.get("d");
-      if (!token) {
-        document.getElementById("notice").innerText = "⚠️ 未偵測到 Token，請從 NFC 鑰匙圈感應進入！";
-        document.getElementById("notice").style.display = "block"; return;
-      }
+      if (!token) { document.getElementById("notice").innerText = "⚠️ 未偵測到 Token，請從 NFC 鑰匙圈感應進入！"; document.getElementById("notice").style.display = "block"; return; }
 
       const uid = token.substring(0, 14);
       const tsHex = token.substring(16, 24);
       if (tsHex === "00000000") document.getElementById("resetBtn").style.display = "inline-block";
 
       const check = checkToken(uid, tsHex);
-      if (!check.ok) {
-        document.getElementById("notice").innerText = check.error;
-        document.getElementById("notice").style.display = "block"; return;
-      }
+      if (!check.ok) { document.getElementById("notice").innerText = check.error; document.getElementById("notice").style.display = "block"; return; }
 
       drawAnswer(uid, check.userData.count, tsHex);
     });
