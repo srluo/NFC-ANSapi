@@ -1,10 +1,5 @@
 {
-  "name": "NFC-ANSapi",
+  "name": "nfc-ansapi",
   "version": "1.0.0",
-  "private": true,
-  "scripts": {
-    "dev": "vercel dev",
-    "build": "vercel build"
-  },
-  "dependencies": {}
+  "type": "module"
 }
