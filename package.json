@@ -1,5 +1,5 @@
 {
-  "name": "nfc-answers",
+  "name": "nfc-ans-api",
   "version": "1.0.0",
   "scripts": {
     "dev": "vercel dev",
