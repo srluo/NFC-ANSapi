@@ -1,7 +1,7 @@
 {
   "version": 2,
   "builds": [
-    { "src": "api/answer.js", "use": "@vercel/node" },
+    { "src": "api/getAnswer.js", "use": "@vercel/node" },
     { "src": "public/**", "use": "@vercel/static" }
   ]
 }
