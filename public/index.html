@@ -3,95 +3,266 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>NFC 求解之書</title>
+  <title>NFC 求解之書 Demo</title>
   <style>
-    body { font-family: "Microsoft JhengHei", sans-serif; background: #f4e2c8; text-align: center; padding: 2rem; }
-    h1 { font-size: 1.8rem; color: #4b2e05; }
-    .card { background: #fff; border-radius: 12px; padding: 1.5rem; margin-top: 1.5rem; box-shadow: 0 4px 8px rgba(0,0,0,0.2);}
-    .answer { font-size: 1.5rem; margin: 1rem 0; }
-    .en { color: #444; font-size: 1rem; }
-    button { margin: 0.5rem; padding: 0.7rem 1.2rem; border: none; border-radius: 8px; background: #8b5e3c; color: white; font-size: 1rem; cursor: pointer; }
-    button:disabled { background: #ccc; cursor: not-allowed; }
-    .favorites { margin-top: 2rem; text-align: left; }
-    .favorites h2 { font-size: 1.2rem; }
-    .favorites ul { list-style: none; padding: 0; }
-    .favorites li { background: #fff9f0; margin: 0.3rem 0; padding: 0.5rem; border-radius: 6px; }
+    body {
+      font-family:"Microsoft JhengHei",sans-serif;
+      color:#333;
+      text-align:center;
+      padding:2rem;
+      background: url("book_bg1_A600.jpg") no-repeat center center fixed;
+      background-size: cover;
+    }
+    header {
+      font-size:1.8rem;
+      font-weight:bold;
+      color:#4a2f00;
+      margin-bottom:1rem;
+      text-shadow:1px 1px 2px rgba(0,0,0,0.2);
+    }
+    .result {
+      margin-top:2rem;
+      padding:1.4rem;
+      border-radius:12px;
+      background:rgba(255,255,255,0.45);
+      box-shadow:0 2px 8px rgba(0,0,0,0.15);
+      font-size:1.5rem;
+      line-height:1.8;
+    }
+    .notice {
+      margin-top:1rem;
+      color:#b22222;
+      font-weight:bold;
+    }
+    .info {
+      margin-top:0.8rem;
+      font-size:0.9rem;
+      color:#555;
+    }
+    button {
+      margin-top:1rem;
+      background:#7b5c2e;
+      color:#fff;
+      padding:0.6rem 1.2rem;
+      border:none;
+      border-radius:8px;
+      cursor:pointer;
+      font-size:0.9rem;
+      box-shadow:0 2px 4px rgba(0,0,0,0.2);
+    }
+    button:hover { background:#5a4220; }
+    .loading { margin-top:2rem; display:none; }
+    .spinner {
+      margin:0 auto 1rem auto;
+      border:6px solid #eee;
+      border-top:6px solid #7b5c2e;
+      border-radius:50%;
+      width:40px; height:40px;
+      animation:spin 1s linear infinite;
+    }
+    @keyframes spin {
+      0% { transform:rotate(0deg); }
+      100% { transform:rotate(360deg); }
+    }
+    .typing { white-space:pre-wrap; text-align:center; }
+    .divider { margin:1rem auto; width:200px; }
+    #hint { margin-top:1rem; font-size:1rem; color:#333; font-weight:bold; }
   </style>
 </head>
 <body>
-  <h1>📖 NFC 求解之書</h1>
+  <header>📖 NFC 求解之書</header>
   <p>感應 NFC 鑰匙圈即可抽出一則答案</p>
 
-  <div id="result" class="card" style="display:none;">
-    <h3>✨ 今日答案 ✨</h3>
-    <p class="answer" id="answer_tw"></p>
-    <p class="en" id="answer_en"></p>
-    <button onclick="saveFavorite()">⭐ 收藏此解答</button>
+  <div id="loading" class="loading">
+    <div class="spinner"></div>
+    <p>🔮 正在為你抽取今日答案...</p><br>
+    <p id="hint">~ 請在心中默念要解答的明確問題 ~ <br>心誠則靈！</p>
   </div>
 
-  <button id="drawBtn" onclick="getAnswer()">🔮 抽一則解答</button>
-  <button onclick="toggleLang()">🌐 切換語言</button>
-
-  <div class="favorites">
-    <h2>📌 我的收藏</h2>
-    <ul id="favList"></ul>
+  <div id="output" class="result" style="display:none;">
+    <p style="color:#555;font-size:1.3rem;">✨ 今日答案 ✨</p>
+    <p id="ansZh" class="typing"></p>
+    <img src="dividing-lines-1.png" class="divider" alt="divider">
+    <p id="ansEn" class="typing" style="color:#333;font-size:1.2rem;"></p>
   </div>
 
+  <p id="remaining" class="info" style="display:none;"></p>
+  <p id="notice" class="notice" style="display:none;"></p>
+
+  <button id="saveBtn" onclick="saveResult()" style="display:none;">📜 收藏此解答</button>
+  <button id="shareBtn" onclick="shareResult()" style="display:none;">📤 分享</button>
+  <button id="resetBtn" onclick="resetRecord()" style="display:none;">🔄 測試用：重置抽籤紀錄</button>
+
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
   <script>
-    let currentAnswer = null;
-    let lang = "tw";
+    function checkToken(uid, tsHex) {
+      const today = new Date().toISOString().slice(0, 10);
+      let record = JSON.parse(localStorage.getItem("tokenRecord") || "{}");
+      if (record.date !== today) record = { date: today, data: {} };
 
-    async function getAnswer() {
-      const uid = "demo-user"; // 🚀 實際部署時由 NFC UID 帶入
+      const userData = record.data[uid] || { lastTS: null, count: 0 };
+      const tsVal = parseInt(tsHex, 16);
+
+      if (userData.lastTS === null) {
+        userData.lastTS = tsVal; userData.count = 1;
+        record.data[uid] = userData;
+        localStorage.setItem("tokenRecord", JSON.stringify(record));
+        return { ok: true, userData };
+      }
+      if (tsVal <= userData.lastTS) return { ok: false, error: "⚠️ Token 無效或重複使用，請重新感應。" };
+      if (userData.count >= 3) return { ok: false, error: "⚠️ 今日抽籤次數已達上限（3次）。" };
+
+      userData.lastTS = tsVal; userData.count += 1;
+      record.data[uid] = userData;
+      localStorage.setItem("tokenRecord", JSON.stringify(record));
+      return { ok: true, userData };
+    }
+
+    function typeWriter(text, element, speed = 40, callback) {
+      let i = 0; element.innerText = "";
+      (function typing() {
+        if (i < text.length) {
+          element.innerText += text.charAt(i++);
+          setTimeout(typing, speed);
+        } else if (callback) callback();
+      })();
+    }
+
+    async function drawAnswer(uid, count, tsHex) {
       try {
-        const res = await fetch(`/api/getAnswer?uid=${uid}`);
+        const res = await fetch(`/api/getAnswer?uid=${uid}&ts=${tsHex}`);
         const data = await res.json();
 
-        if (!data.success) {
-          alert(data.error || "無法取得答案");
-          return;
+        if (!res.ok || !data.success) {
+          throw new Error(data.error || "API 回傳錯誤");
         }
 
-        currentAnswer = data;
-        document.getElementById("result").style.display = "block";
-        renderAnswer();
+        const pick = data.answer;
+
+        document.getElementById("loading").style.display = "block";
+        document.getElementById("output").style.display = "none";
+        const delay = 10000 + Math.random() * 2000;
+
+        setTimeout(() => {
+          document.getElementById("loading").style.display = "none";
+          document.getElementById("hint").style.display = "none";
+          document.getElementById("output").style.display = "block";
+
+          typeWriter(pick.answer_tw, document.getElementById("ansZh"), 50, () => {
+            typeWriter(pick.answer_en, document.getElementById("ansEn"), 40);
+          });
+
+          document.getElementById("remaining").style.display = "block";
+          document.getElementById("remaining").innerText = `今日剩餘次數：${data.remaining} / 3`;
+
+          document.getElementById("saveBtn").style.display = "inline-block";
+          document.getElementById("shareBtn").style.display = "inline-block";
+        }, delay);
+
       } catch (err) {
-        alert("伺服器錯誤，請稍後再試");
+        console.error(err);
+        alert("⚠️ 抽取答案失敗，請稍後再試！");
       }
     }
 
-    function renderAnswer() {
-      if (!currentAnswer) return;
-      document.getElementById("answer_tw").textContent = currentAnswer.answer_tw;
-      document.getElementById("answer_en").textContent = currentAnswer.answer_en;
+    async function saveResult() { await captureResult(true); }
+    async function shareResult() { await captureResult(false, true); }
+
+    async function captureResult(isSave = true, isShare = false) {
+      const output = document.getElementById("output");
+      if (!output || output.style.display === "none") return;
+
+      const wrapper = document.createElement("div");
+      wrapper.style.padding = "10px";
+      wrapper.style.background = `url('book_bg1_A600.jpg')`;
+      wrapper.style.backgroundSize = "cover";
+      wrapper.style.display = "inline-block";
+      wrapper.style.textAlign = "center";
+      wrapper.style.fontFamily = "Microsoft JhengHei, sans-serif";
+
+      const titleEl = document.createElement("p");
+      titleEl.innerText = "📖 NFC 求解之書";
+      titleEl.style.fontWeight = "bold";
+      titleEl.style.marginBottom = "0.5rem";
+      wrapper.appendChild(titleEl);
+
+      const today = new Date().toISOString().slice(0, 10);
+      const dateEl = document.createElement("p");
+      dateEl.innerText = `於 ${today}`;
+      dateEl.style.marginBottom = "1rem";
+      dateEl.style.fontWeight = "bold";
+      wrapper.appendChild(dateEl);
+
+      const zh = document.getElementById("ansZh").innerText;
+      const zhEl = document.createElement("p");
+      zhEl.innerText = zh;
+      zhEl.style.fontSize = "1.5rem";
+      zhEl.style.margin = "1rem 0";
+      wrapper.appendChild(zhEl);
+
+      const divider = document.createElement("img");
+      divider.src = "dividing-lines-1.png";
+      divider.style.width = "200px";
+      divider.style.margin = "0.5rem auto";
+      wrapper.appendChild(divider);
+
+      const en = document.getElementById("ansEn").innerText;
+      const enEl = document.createElement("p");
+      enEl.innerText = en;
+      enEl.style.fontSize = "1.2rem";
+      enEl.style.color = "#333";
+      enEl.style.margin = "1rem 0";
+      wrapper.appendChild(enEl);
+
+      document.body.appendChild(wrapper);
+      const canvas = await html2canvas(wrapper, { scale: 2 });
+      document.body.removeChild(wrapper);
+
+      const blob = await new Promise(resolve => canvas.toBlob(resolve, "image/png"));
+      const todayStr = new Date().toISOString().slice(0, 10);
+      let counter = Number(localStorage.getItem("saveCounter_" + todayStr) || 0) + 1;
+      localStorage.setItem("saveCounter_" + todayStr, counter);
+      const filename = `answer_${todayStr}_${counter}.png`;
+
+      if (isShare && navigator.share && navigator.canShare && navigator.canShare({ files: [new File([blob], filename, { type: "image/png" })] })) {
+        const file = new File([blob], filename, { type: "image/png" });
+        await navigator.share({ title: "📖 NFC 求解之書", text: "我的今日解答已出爐！", files: [file] });
+      } else {
+        const link = document.createElement("a");
+        link.download = filename;
+        link.href = canvas.toDataURL();
+        link.click();
+      }
     }
 
-    function toggleLang() {
-      lang = lang === "tw" ? "en" : "tw";
-      document.getElementById("answer_tw").style.display = (lang === "tw") ? "block" : "none";
-      document.getElementById("answer_en").style.display = (lang === "en") ? "block" : "none";
-    }
+    window.addEventListener("load", () => {
+      const urlParams = new URLSearchParams(window.location.search);
+      const token = urlParams.get("d");
+      if (!token) {
+        document.getElementById("notice").innerText = "⚠️ 未偵測到 Token，請從 NFC 鑰匙圈感應進入！";
+        document.getElementById("notice").style.display = "block"; return;
+      }
 
-    function saveFavorite() {
-      if (!currentAnswer) return;
-      let favs = JSON.parse(localStorage.getItem("favorites") || "[]");
-      favs.push(currentAnswer);
-      localStorage.setItem("favorites", JSON.stringify(favs));
-      renderFavorites();
-    }
+      const uid = token.substring(0, 14);
+      const tsHex = token.substring(16, 24);
+      if (tsHex === "00000000") document.getElementById("resetBtn").style.display = "inline-block";
 
-    function renderFavorites() {
-      let favs = JSON.parse(localStorage.getItem("favorites") || "[]");
-      const list = document.getElementById("favList");
-      list.innerHTML = "";
-      favs.forEach(f => {
-        const li = document.createElement("li");
-        li.textContent = `${f.answer_tw} / ${f.answer_en}`;
-        list.appendChild(li);
-      });
-    }
+      const check = checkToken(uid, tsHex);
+      if (!check.ok) {
+        document.getElementById("notice").innerText = check.error;
+        document.getElementById("notice").style.display = "block"; return;
+      }
 
-    window.onload = renderFavorites;
+      drawAnswer(uid, check.userData.count, tsHex);
+    });
+
+    function resetRecord() {
+      localStorage.removeItem("tokenRecord");
+      document.getElementById("notice").innerText = "✅ 抽籤紀錄已重置，可以重新感應。";
+      document.getElementById("notice").style.display = "block";
+      document.getElementById("output").style.display = "none";
+      document.getElementById("loading").style.display = "none";
+    }
   </script>
 </body>
 </html>
